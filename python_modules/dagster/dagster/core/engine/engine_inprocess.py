@@ -1,8 +1,15 @@
 import os
 import sys
+from collections import defaultdict
 
 from dagster import EventMetadataEntry, check
-from dagster.core.definitions import ExpectationResult, Materialization, Output, TypeCheck
+from dagster.core.definitions import (
+    ExpectationResult,
+    Materialization,
+    Output,
+    RetryPrototype,
+    TypeCheck,
+)
 from dagster.core.errors import (
     DagsterError,
     DagsterExecutionStepExecutionError,
@@ -27,6 +34,7 @@ from dagster.core.execution.plan.objects import (
     StepInputData,
     StepOutputData,
     StepOutputHandle,
+    StepRetryData,
     StepSuccessData,
     TypeCheckData,
     UserFailureData,
@@ -45,7 +53,7 @@ class InProcessEngine(Engine):  # pylint: disable=no-init
     def execute(pipeline_context, execution_plan):
         check.inst_param(pipeline_context, 'pipeline_context', SystemPipelineExecutionContext)
         check.inst_param(execution_plan, 'execution_plan', ExecutionPlan)
-
+        attempts_map = defaultdict(int)
         yield DagsterEvent.engine_event(
             pipeline_context,
             'Executing steps in process (pid: {pid})'.format(pid=os.getpid()),
@@ -79,6 +87,7 @@ class InProcessEngine(Engine):  # pylint: disable=no-init
                     len(steps) == 1, 'Invariant Violation: expected step to be available to execute'
                 )
                 step = steps[0]
+
                 step_context = pipeline_context.for_step(step)
                 check.invariant(
                     all(
@@ -109,12 +118,13 @@ class InProcessEngine(Engine):  # pylint: disable=no-init
                         continue
 
                     for step_event in check.generator(
-                        dagster_event_sequence_for_step(step_context)
+                        dagster_event_sequence_for_step(step_context, attempts_map[step.key])
                     ):
                         check.inst(step_event, DagsterEvent)
                         yield step_event
                         active_execution.handle_event(step_event)
 
+                    attempts_map[step.key] += 1
                     active_execution.verify_complete(pipeline_context, step.key)
 
                 # process skips from failures or uncovered inputs
@@ -220,7 +230,7 @@ def _step_failure_event_from_exc_info(step_context, exc_info, user_failure_data=
     )
 
 
-def dagster_event_sequence_for_step(step_context):
+def dagster_event_sequence_for_step(step_context, attempts):
     '''
     Yield a sequence of dagster events for the given step with the step context.
 
@@ -256,8 +266,15 @@ def dagster_event_sequence_for_step(step_context):
     check.inst_param(step_context, 'step_context', SystemStepExecutionContext)
 
     try:
-        for step_event in check.generator(_core_dagster_event_sequence_for_step(step_context)):
+        for step_event in check.generator(
+            _core_dagster_event_sequence_for_step(step_context, attempts)
+        ):
             yield step_event
+
+    except RetryPrototype:
+        yield DagsterEvent.step_retry_event(
+            step_context, StepRetryData(error=serializable_error_info_from_exc_info(sys.exc_info()))
+        )
 
     # case (1) in top comment
     except DagsterUserCodeExecutionError as dagster_user_error:  # case (1) above
@@ -493,7 +510,7 @@ def _type_checked_step_output_event_sequence(step_context, output):
             )
 
 
-def _core_dagster_event_sequence_for_step(step_context):
+def _core_dagster_event_sequence_for_step(step_context, attempts):
     '''
     Execute the step within the step_context argument given the in-memory
     events. This function yields a sequence of DagsterEvents, but without
@@ -502,7 +519,10 @@ def _core_dagster_event_sequence_for_step(step_context):
     '''
     check.inst_param(step_context, 'step_context', SystemStepExecutionContext)
 
-    yield DagsterEvent.step_start_event(step_context)
+    if attempts > 0:
+        yield DagsterEvent.step_restart_event(step_context, attempts)
+    else:
+        yield DagsterEvent.step_start_event(step_context)
 
     inputs = {}
     for input_name, input_value in _input_values_from_intermediates_manager(step_context).items():
