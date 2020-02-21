@@ -27,22 +27,24 @@ data:
         instance_config_map: "{{ template "dagster.fullname" .}}-instance"
         image_pull_policy: "{{ .Values.imagePullPolicy }}"
         job_namespace: "{{ .Release.Namespace }}"
-        {{- if .Values.job_runner.env_config_maps }}
-        env_config_maps:
+        env_config_maps: [
+          {{- if .Values.job_runner.env_config_maps }}
           {{- range $name := .Values.job_runner.env_config_maps }}
           {{- if $name }}
             - {{ $name | quote }}
           {{- end }}
           {{- end }}
-        {{- end }}
-        {{- if .Values.job_runner.env_secrets }}
-        env_secrets:
+          {{- end }}
+        ]
+        env_secrets: [
+          {{- if .Values.job_runner.env_secrets }}
           {{- range $name := .Values.job_runner.env_secrets }}
           {{- if $name }}
             - {{ $name | quote }}
           {{- end }}
           {{- end }}
-        {{- end }}
+          {{- end }}
+        ]
 
 
     run_storage:
