@@ -23,6 +23,7 @@ from dagster import (
     schedules,
     solid,
 )
+from dagster.check import CheckError
 from dagster.core.definitions.decorators import daily_schedule, hourly_schedule, monthly_schedule
 from dagster.core.errors import DagsterInvariantViolationError
 from dagster.core.utility_solids import define_stub_solid
@@ -404,3 +405,53 @@ def test_solid_docstring():
     assert bar_solid.__doc__ == 'BAR_DOCSTRING'
     assert baz_solid.__doc__ == 'BAZ_DOCSTRING'
     assert quux_solid.__doc__ == 'QUUX_DOCSTRING'
+
+
+def test_solid_subset_in_schedule_decorators():
+    @solid
+    def do_nothing(_, _one):
+        pass
+
+    @solid
+    def return_one(_):
+        return 1
+
+    @pipeline
+    def foo_pipeline():
+        do_nothing(return_one())
+
+    @monthly_schedule(
+        pipeline_name='foo_pipeline',
+        solid_subset=['return_one'],
+        execution_day_of_month=2,
+        start_date=datetime(year=2019, month=1, day=1),
+    )
+    def monthly_foo_schedule_subset():
+        return {}
+
+    @daily_schedule(
+        pipeline_name='foo_pipeline',
+        solid_subset=['return_one'],
+        start_date=datetime(year=2019, month=1, day=1),
+    )
+    def daily_foo_schedule_subset():
+        return {}
+
+    @hourly_schedule(
+        pipeline_name='foo_pipeline',
+        solid_subset=['return_one'],
+        start_date=datetime(year=2019, month=1, day=1),
+    )
+    def hourly_foo_schedule_subset():
+        return {}
+
+    with pytest.raises(CheckError):
+
+        @monthly_schedule(
+            pipeline_name='foo_pipeline',
+            solid_subset=[1],
+            execution_day_of_month=2,
+            start_date=datetime(year=2019, month=1, day=1),
+        )
+        def monthly_foo_schedule_bad_subset():
+            return {}
