@@ -2,8 +2,8 @@ import pytest
 
 from dagster import DagsterInstance, ModeDefinition, PipelineDefinition, resource, solid
 from dagster.core.execution.api import create_execution_plan
-from dagster.core.execution.context_creation_pipeline import (
-    pipeline_initialization_event_generator,
+from dagster.core.execution.context_creation_pipeline import pipeline_initialization_event_generator
+from dagster.core.execution.resources_init import (
     resource_initialization_event_generator,
     resource_initialization_manager,
     single_resource_event_generator,

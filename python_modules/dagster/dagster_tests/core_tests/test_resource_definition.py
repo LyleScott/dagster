@@ -1,3 +1,5 @@
+import pytest
+
 from dagster import (
     DagsterResourceFunctionError,
     Field,
@@ -508,6 +510,14 @@ def test_resource_init_failure_with_teardown():
         mode_defs=[ModeDefinition(resource_defs={'a': resource_a, 'b': resource_b})],
     )
 
+    res = execute_pipeline(pipeline, raise_on_error=False)
+    assert res.event_list[0].event_type_value == 'PIPELINE_INIT_FAILURE'
+    assert called == ['A', 'B']
+    assert cleaned == ['B', 'A']
+
+    called = []
+    cleaned = []
+
     events = []
     try:
         for event in execute_pipeline_iterator(pipeline):
@@ -550,6 +560,14 @@ def test_solid_failure_resource_teardown():
         solid_defs=[resource_solid],
         mode_defs=[ModeDefinition(resource_defs={'a': resource_a, 'b': resource_b})],
     )
+
+    res = execute_pipeline(pipeline, raise_on_error=False)
+    assert res.event_list[-1].event_type_value == 'PIPELINE_FAILURE'
+    assert called == ['A', 'B']
+    assert cleaned == ['B', 'A']
+
+    called = []
+    cleaned = []
 
     events = []
     try:
@@ -595,6 +613,13 @@ def test_resource_teardown_failure():
         mode_defs=[ModeDefinition(resource_defs={'a': resource_a, 'b': resource_b})],
     )
 
+    with pytest.raises(DagsterResourceFunctionError):
+        execute_pipeline(pipeline, raise_on_error=False)
+    assert called == ['A', 'B']
+    assert cleaned == ['A']
+
+    called = []
+    cleaned = []
     events = []
     try:
         for event in execute_pipeline_iterator(pipeline):

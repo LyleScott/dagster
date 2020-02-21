@@ -18,7 +18,7 @@ from dagster.cli import load_handle
 from dagster.core.definitions.dependency import SolidHandle
 from dagster.core.definitions.resource import ScopedResourcesBuilder
 from dagster.core.execution.api import create_execution_plan, scoped_pipeline_context
-from dagster.core.execution.context_creation_pipeline import (
+from dagster.core.execution.resources_init import (
     get_required_resource_keys_to_init,
     resource_initialization_event_generator,
 )
@@ -63,8 +63,8 @@ class Manager(object):
     ):
         '''
         Drop-in replacement for
-        `dagster.core.execution.context_creation_pipeline.resource_initialization_manager`.  It uses
-        a `DagstermillResourceEventGenerationManager` and explicitly calls `teardown` on it
+        `dagster.core.execution.resources_init.resource_initialization_manager`.  It uses a
+        `DagstermillResourceEventGenerationManager` and explicitly calls `teardown` on it
         '''
         generator = resource_initialization_event_generator(
             pipeline_def, environment_config, pipeline_run, log_manager, resource_keys_to_init
