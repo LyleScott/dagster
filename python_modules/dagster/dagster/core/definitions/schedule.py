@@ -132,6 +132,7 @@ class ScheduleDefinition(object):
             'selector': {'name': pipeline_name},
             'executionMetadata': {"tags": []},
             'mode': mode,
+            'solid_subset': solid_subset,
         }
 
     @property

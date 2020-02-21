@@ -408,6 +408,8 @@ def test_solid_docstring():
 
 
 def test_solid_subset_in_schedule_decorators():
+    # pylint: disable=W0212
+    # Disabled protected access warning
     @solid
     def do_nothing(_, _one):
         pass
@@ -429,6 +431,8 @@ def test_solid_subset_in_schedule_decorators():
     def monthly_foo_schedule_subset():
         return {}
 
+    assert monthly_foo_schedule_subset._execution_params.get('solid_subset') == ['return_one']
+
     @daily_schedule(
         pipeline_name='foo_pipeline',
         solid_subset=['return_one'],
@@ -437,6 +441,8 @@ def test_solid_subset_in_schedule_decorators():
     def daily_foo_schedule_subset():
         return {}
 
+    assert daily_foo_schedule_subset._execution_params.get('solid_subset') == ['return_one']
+
     @hourly_schedule(
         pipeline_name='foo_pipeline',
         solid_subset=['return_one'],
@@ -444,6 +450,8 @@ def test_solid_subset_in_schedule_decorators():
     )
     def hourly_foo_schedule_subset():
         return {}
+
+    assert hourly_foo_schedule_subset._execution_params.get('solid_subset') == ['return_one']
 
     with pytest.raises(CheckError):
 
