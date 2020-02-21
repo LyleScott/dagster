@@ -81,7 +81,10 @@ def _pipeline_execution_iterator(pipeline_context, execution_plan, pipeline_run)
             yield event
     except (Exception, KeyboardInterrupt):
         pipeline_success = False
-        raise  # finally block will run before this is re-raised
+
+        if pipeline_context.raise_on_error:
+            raise  # finally block will run before this is re-raised
+
     finally:
         if pipeline_success:
             yield DagsterEvent.pipeline_success(pipeline_context)
