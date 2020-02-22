@@ -8,6 +8,7 @@ import boto3
 import click
 import six
 import terminaltables
+from botocore.exceptions import ClientError
 
 from .term import Spinner, Term
 
@@ -22,6 +23,13 @@ DEFAULT_AMI = 'ami-08fd8ae3806f09a08'
 
 # User can select an instance type for a PG RDS instance
 DEFAULT_RDS_INSTANCE_TYPE = 'db.t3.small'
+
+VPC_CREATION_WARNING = '''Note that this script will not create a VPC on your behalf. If you don't
+know what this is, the default is almost certainly what you want. However,
+please be aware that the instance we create in your VPC is likely to be
+insecure (publicly accessible). For production, you will probably want to set
+up a secured instance and VPC!
+'''
 
 
 def get_all_regions():
@@ -83,17 +91,10 @@ def select_vpc(client, ec2):
     vpc = None
     vpc_ids = [vpc[0] for vpc in vpcs]
 
-    Term.info(
-        'Note that this script will not create a VPC\n'
-        'on your behalf. If you don\'t know what this\n'
-        'is, the default is almost certainly what you want:\n'
-        'but please be aware that the instance we set up\n'
-        'is likely to be insecure (publicly accessible).\n'
-        'For production, you will probably want to set up\n'
-        'a secured VPC!'
-    )
+    Term.info(VPC_CREATION_WARNING)
 
-    while vpc not in vpc_ids:
+    vpc = None
+    while not vpc:
         vpc = click.prompt(
             '\nSelect an existing VPC ID to use. '
             + click.style('[default: %s]' % default_vpc, fg='green'),
@@ -101,6 +102,9 @@ def select_vpc(client, ec2):
             default=default_vpc,
             show_default=False,
         )
+        if vpc not in vpc_ids:
+            Term.error('Specified VPC %s does not exist' % vpc)
+            vpc = None
     return vpc
 
 
@@ -224,32 +228,28 @@ def create_key_pair(prev_config, client, dagster_home):
             return key_pair_name, key_file_path
 
 
-def get_validated_ami_id(_client):
-    '''Permit the user to select an AMI to use. This is currently unused, as instead we default to
-    using a Ubuntu 16.04 LTS AMI.
+def get_validated_ami_id(client):
+    '''Permit the user to select an AMI to use. We default to using a Ubuntu 16.04 LTS AMI.
     '''
 
-    # For now, we will force users to use a specific Ubuntu AMI
-    return DEFAULT_AMI
+    ami_id = None
+    while not ami_id:
+        ami_id = click.prompt(
+            '\nChoose an AMI to use (must be Debian-based) '
+            + click.style('[default is %s (us-west-1)]' % DEFAULT_AMI, fg='green'),
+            type=str,
+            default=DEFAULT_AMI,
+            show_default=False,
+        )
 
-    # ami_id = None
-    # while not ami_id:
-    #     ami_id = click.prompt(
-    #         '\nChoose an AMI to use (must be Debian-based) '
-    #         + click.style('[default is %s]' % DEFAULT_AMI, fg='green'),
-    #         type=str,
-    #         default=DEFAULT_AMI,
-    #         show_default=False,
-    #     )
+        # Boto will throw a ClientError exception if this AMI doesn't exist.
+        try:
+            client.describe_images(ImageIds=[ami_id])
+        except ClientError:
+            Term.error('Specified AMI does not exist in the chosen region, fix to continue')
+            ami_id = None
 
-    #     # Boto will throw a ClientError exception if this AMI doesn't exist.
-    #     try:
-    #         client.describe_images(ImageIds=[ami_id])
-    #     except ClientError:
-    #         Term.error('Specified AMI does not exist, fix to continue')
-    #         ami_id = None
-
-    # return ami_id
+    return ami_id
 
 
 def create_ec2_instance(client, ec2, security_group_id, ami_id, key_pair_name, use_master):
