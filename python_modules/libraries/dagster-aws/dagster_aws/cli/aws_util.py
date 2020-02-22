@@ -8,6 +8,7 @@ import boto3
 import click
 import six
 import terminaltables
+from botocore.exceptions import ClientError
 
 from .term import Spinner, Term
 
@@ -224,32 +225,28 @@ def create_key_pair(prev_config, client, dagster_home):
             return key_pair_name, key_file_path
 
 
-def get_validated_ami_id(_client):
-    '''Permit the user to select an AMI to use. This is currently unused, as instead we default to
-    using a Ubuntu 16.04 LTS AMI.
+def get_validated_ami_id(client):
+    '''Permit the user to select an AMI to use. We default to using a Ubuntu 16.04 LTS AMI.
     '''
 
-    # For now, we will force users to use a specific Ubuntu AMI
-    return DEFAULT_AMI
+    ami_id = None
+    while not ami_id:
+        ami_id = click.prompt(
+            '\nChoose an AMI to use (must be Debian-based) '
+            + click.style('[default is %s (us-west-1)]' % DEFAULT_AMI, fg='green'),
+            type=str,
+            default=DEFAULT_AMI,
+            show_default=False,
+        )
 
-    # ami_id = None
-    # while not ami_id:
-    #     ami_id = click.prompt(
-    #         '\nChoose an AMI to use (must be Debian-based) '
-    #         + click.style('[default is %s]' % DEFAULT_AMI, fg='green'),
-    #         type=str,
-    #         default=DEFAULT_AMI,
-    #         show_default=False,
-    #     )
+        # Boto will throw a ClientError exception if this AMI doesn't exist.
+        try:
+            client.describe_images(ImageIds=[ami_id])
+        except ClientError:
+            Term.error('Specified AMI does not exist in the chosen region, fix to continue')
+            ami_id = None
 
-    #     # Boto will throw a ClientError exception if this AMI doesn't exist.
-    #     try:
-    #         client.describe_images(ImageIds=[ami_id])
-    #     except ClientError:
-    #         Term.error('Specified AMI does not exist, fix to continue')
-    #         ami_id = None
-
-    # return ami_id
+    return ami_id
 
 
 def create_ec2_instance(client, ec2, security_group_id, ami_id, key_pair_name, use_master):
