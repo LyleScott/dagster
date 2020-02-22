@@ -2,8 +2,15 @@ import os
 import subprocess
 
 import click
+import pytest
 from click.testing import CliRunner
-from dagster_aws.cli.cli import ensure_requirements, remove_ssh_key
+from dagster_aws.cli.cli import (
+    DAGSTER_HOME_ERROR,
+    ensure_requirements,
+    exit_gracefully,
+    get_dagster_home,
+    remove_ssh_key,
+)
 
 from dagster import seven
 
@@ -88,3 +95,37 @@ def test_remove_ssh_key():
     subprocess.call(['ssh-add', test_key_path])
     assert not remove_ssh_key('/key/does/not/exist.pem')
     assert remove_ssh_key(test_key_path)
+
+
+def test_get_dagster_home(capsys, tmp_path):
+    old_env = os.getenv('DAGSTER_HOME')
+    if old_env is not None:
+        del os.environ['DAGSTER_HOME']
+
+    with pytest.raises(SystemExit) as exc_info:
+        get_dagster_home()
+
+    captured = capsys.readouterr()
+
+    assert exc_info.value.code == 1
+    assert DAGSTER_HOME_ERROR in captured.err
+
+    path = str(tmp_path)
+    os.environ['DAGSTER_HOME'] = path
+    assert get_dagster_home() == path
+
+    captured = capsys.readouterr()
+    assert ('Found DAGSTER_HOME in environment at: {path}'.format(path=path)) in captured.out
+
+    if old_env is not None:
+        os.environ['DAGSTER_HOME'] = old_env
+
+
+def test_exit_gracefully(capsys):
+    with pytest.raises(SystemExit) as exc_info:
+        exit_gracefully(None, None)
+
+    captured = capsys.readouterr()
+
+    assert exc_info.value.code == 1
+    assert 'Command killed by keyboard interrupt, quitting' in captured.out
